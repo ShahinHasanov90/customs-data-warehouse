@@ -1,0 +1,147 @@
+version: 2
+
+sources:
+  - name: customs
+    schema: public
+    description: "Customs data warehouse — source tables"
+    tables:
+      - name: fact_declarations
+        description: "Central fact table recording every customs declaration"
+      - name: dim_date
+        description: "Calendar dimension"
+      - name: dim_importer
+        description: "Importer entity dimension"
+      - name: dim_exporter
+        description: "Exporter entity dimension"
+      - name: dim_commodity
+        description: "Commodity / HS code dimension"
+      - name: dim_route
+        description: "Trade route dimension (origin/destination/mode)"
+      - name: dim_customs_post
+        description: "Customs post / checkpoint dimension"
+
+models:
+  - name: stg_declarations
+    description: "Staged and cleaned customs declarations"
+    columns:
+      - name: declaration_id
+        description: "Surrogate primary key"
+        tests:
+          - unique
+          - not_null
+      - name: declaration_no
+        description: "Business-facing declaration number"
+        tests:
+          - unique
+          - not_null
+      - name: date_key
+        description: "Foreign key to dim_date"
+        tests:
+          - not_null
+          - relationships:
+              to: source('customs', 'dim_date')
+              field: date_key
+      - name: importer_key
+        description: "Foreign key to dim_importer"
+        tests:
+          - not_null
+          - relationships:
+              to: source('customs', 'dim_importer')
+              field: importer_key
+      - name: exporter_key
+        description: "Foreign key to dim_exporter"
+        tests:
+          - not_null
+      - name: commodity_key
+        description: "Foreign key to dim_commodity"
+        tests:
+          - not_null
+      - name: route_key
+        description: "Foreign key to dim_route"
+        tests:
+          - not_null
+      - name: declared_value
+        description: "Monetary value as declared by the importer (cleaned, non-negative)"
+        tests:
+          - not_null
+      - name: weight_kg
+        description: "Gross weight in kilograms (cleaned, non-negative)"
+        tests:
+          - not_null
+      - name: risk_score
+        description: "Computed risk score between 0.00 and 100.00"
+        tests:
+          - not_null
+      - name: risk_level
+        description: "Categorical risk level: LOW, MEDIUM, HIGH, CRITICAL"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+      - name: is_flagged
+        description: "Whether the declaration was flagged for inspection"
+        tests:
+          - not_null
+      - name: currency_code
+        description: "ISO 4217 currency code"
+        tests:
+          - not_null
+
+  - name: fct_daily_trade
+    description: "Daily aggregation of trade volume, value, and risk metrics"
+    columns:
+      - name: date_key
+        description: "Calendar date key — grain of this table"
+        tests:
+          - unique
+          - not_null
+      - name: total_declarations
+        description: "Count of declarations for the day"
+        tests:
+          - not_null
+      - name: total_declared_value
+        description: "Sum of declared values for the day"
+      - name: avg_risk_score
+        description: "Average risk score across all declarations for the day"
+      - name: flagged_pct
+        description: "Percentage of declarations flagged for inspection"
+
+  - name: fct_risk_summary
+    description: "Risk profile summary by importer and month"
+    columns:
+      - name: importer_key
+        description: "Foreign key to dim_importer"
+        tests:
+          - not_null
+      - name: year
+        description: "Calendar year"
+        tests:
+          - not_null
+      - name: month
+        description: "Calendar month"
+        tests:
+          - not_null
+      - name: avg_risk_score
+        description: "Average risk score for the importer-month"
+      - name: flagged_pct
+        description: "Percentage of declarations flagged"
+
+  - name: dim_commodity_enriched
+    description: "Enriched commodity dimension with HS hierarchy and usage statistics"
+    columns:
+      - name: commodity_key
+        description: "Primary key — surrogate key for the commodity"
+        tests:
+          - unique
+          - not_null
+      - name: hs_code
+        description: "Full Harmonized System code"
+        tests:
+          - unique
+          - not_null
+      - name: commodity_sector
+        description: "High-level sector classification derived from HS chapter"
+        tests:
+          - not_null
+      - name: avg_risk_score
+        description: "Average risk score across all declarations for this commodity"
